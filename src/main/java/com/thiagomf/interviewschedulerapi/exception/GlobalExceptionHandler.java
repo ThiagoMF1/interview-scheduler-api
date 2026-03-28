@@ -12,12 +12,23 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(EmailAlreadyExistsException.class)
     public ResponseEntity<?> handleEmailAlreadyExists(EmailAlreadyExistsException ex) {
-
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
                 Map.of(
                         "timestamp", LocalDateTime.now(),
                         "status", 400,
                         "error", "Bad Request",
+                        "message", ex.getMessage()
+                )
+        );
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<?> handleInvalidCredentials(InvalidCredentialsException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
+                Map.of(
+                        "timestamp", LocalDateTime.now(),
+                        "status", 401,
+                        "error", "Unauthorized",
                         "message", ex.getMessage()
                 )
         );
