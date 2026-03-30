@@ -1,28 +1,36 @@
 package com.thiagomf.interviewschedulerapi.security;
 
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
-import java.util.Date;
 
 @Service
 public class JwtService {
 
     private static final String SECRET_KEY = "interview-scheduler-secret-key-2026-java-spring-boot";
-    private static final long EXPIRATION_TIME = 1000 * 60 * 60;
+
+    private SecretKey getKey() {
+        return Keys.hmacShaKeyFor(SECRET_KEY.getBytes(StandardCharsets.UTF_8));
+    }
 
     public String generateToken(String email) {
+        return Jwts.builder()
+                .setSubject(email)
+                .signWith(getKey())
+                .compact();
+    }
 
-        SecretKey key = Keys.hmacShaKeyFor(SECRET_KEY.getBytes(StandardCharsets.UTF_8));
+    public String extractEmail(String token) {
+        Claims claims = Jwts.parserBuilder()
+                .setSigningKey(getKey())
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
 
-       return Jwts.builder()
-        .setSubject(email)
-        .setIssuedAt(new Date())
-        .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
-        .signWith(key)
-        .compact();
+        return claims.getSubject();
     }
 }
