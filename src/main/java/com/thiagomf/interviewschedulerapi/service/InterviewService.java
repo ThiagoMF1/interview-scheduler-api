@@ -2,8 +2,12 @@ package com.thiagomf.interviewschedulerapi.service;
 
 import com.thiagomf.interviewschedulerapi.dto.CancelInterviewRequest;
 import com.thiagomf.interviewschedulerapi.dto.CreateInterviewRequest;
+import com.thiagomf.interviewschedulerapi.dto.DashboardResponse;
 import com.thiagomf.interviewschedulerapi.dto.InterviewResponse;
-import com.thiagomf.interviewschedulerapi.entity.*;
+import com.thiagomf.interviewschedulerapi.entity.Interview;
+import com.thiagomf.interviewschedulerapi.entity.InterviewStatus;
+import com.thiagomf.interviewschedulerapi.entity.Role;
+import com.thiagomf.interviewschedulerapi.entity.User;
 import com.thiagomf.interviewschedulerapi.exception.InvalidInterviewStateException;
 import com.thiagomf.interviewschedulerapi.exception.ResourceNotFoundException;
 import com.thiagomf.interviewschedulerapi.exception.ScheduleConflictException;
@@ -11,10 +15,10 @@ import com.thiagomf.interviewschedulerapi.exception.UnauthorizedActionException;
 import com.thiagomf.interviewschedulerapi.repository.InterviewRepository;
 import com.thiagomf.interviewschedulerapi.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -57,24 +61,31 @@ public class InterviewService {
         return mapToResponse(interviewRepository.save(interview));
     }
 
-    public List<InterviewResponse> getMyInterviews(String email) {
-        List<Interview> recruiterInterviews = interviewRepository.findByRecruiterEmailOrderByScheduledAtAsc(email);
-        List<Interview> candidateInterviews = interviewRepository.findByCandidateEmailOrderByScheduledAtAsc(email);
+    public List<InterviewResponse> getMyInterviews(String email, InterviewStatus status, int page, int size) {
+        PageRequest pageable = PageRequest.of(page, size);
 
-        List<Interview> allInterviews = new ArrayList<>();
-        allInterviews.addAll(recruiterInterviews);
+        List<Interview> recruiterInterviews;
+        List<Interview> candidateInterviews;
 
-        for (Interview interview : candidateInterviews) {
-            boolean alreadyAdded = allInterviews.stream().anyMatch(existing -> existing.getId().equals(interview.getId()));
-            if (!alreadyAdded) {
-                allInterviews.add(interview);
-            }
+        if (status != null) {
+            recruiterInterviews = interviewRepository
+                    .findByRecruiterEmailAndStatusOrderByScheduledAtAsc(email, status, pageable)
+                    .getContent();
+
+            candidateInterviews = interviewRepository
+                    .findByCandidateEmailAndStatusOrderByScheduledAtAsc(email, status, pageable)
+                    .getContent();
+        } else {
+            recruiterInterviews = interviewRepository
+                    .findByRecruiterEmailOrderByScheduledAtAsc(email, pageable)
+                    .getContent();
+
+            candidateInterviews = interviewRepository
+                    .findByCandidateEmailOrderByScheduledAtAsc(email, pageable)
+                    .getContent();
         }
 
-        return allInterviews.stream()
-                .sorted((a, b) -> a.getScheduledAt().compareTo(b.getScheduledAt()))
-                .map(this::mapToResponse)
-                .toList();
+        return mergeAndMapInterviews(recruiterInterviews, candidateInterviews);
     }
 
     public InterviewResponse getInterviewById(Long interviewId, String email) {
@@ -120,6 +131,26 @@ public class InterviewService {
         return mapToResponse(interviewRepository.save(interview));
     }
 
+    public DashboardResponse getDashboard(String email) {
+        long totalInterviews = interviewRepository.countByRecruiterEmailOrCandidateEmail(email, email);
+        long scheduledInterviews = interviewRepository.countByRecruiterEmailAndStatusOrCandidateEmailAndStatus(
+                email, InterviewStatus.SCHEDULED, email, InterviewStatus.SCHEDULED
+        );
+        long completedInterviews = interviewRepository.countByRecruiterEmailAndStatusOrCandidateEmailAndStatus(
+                email, InterviewStatus.COMPLETED, email, InterviewStatus.COMPLETED
+        );
+        long canceledInterviews = interviewRepository.countByRecruiterEmailAndStatusOrCandidateEmailAndStatus(
+                email, InterviewStatus.CANCELED, email, InterviewStatus.CANCELED
+        );
+
+        return DashboardResponse.builder()
+                .totalInterviews(totalInterviews)
+                .scheduledInterviews(scheduledInterviews)
+                .completedInterviews(completedInterviews)
+                .canceledInterviews(canceledInterviews)
+                .build();
+    }
+
     private Interview findInterview(Long interviewId) {
         return interviewRepository.findById(interviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("Interview not found"));
@@ -133,8 +164,21 @@ public class InterviewService {
     private void validateScheduleConflict(User recruiter, User candidate, LocalDateTime scheduledAt, Integer durationMinutes) {
         LocalDateTime newInterviewEnd = scheduledAt.plusMinutes(durationMinutes);
 
-        List<Interview> recruiterInterviews = interviewRepository.findByRecruiterIdAndStatus(recruiter.getId(), InterviewStatus.SCHEDULED);
-        List<Interview> candidateInterviews = interviewRepository.findByCandidateIdAndStatus(candidate.getId(), InterviewStatus.SCHEDULED);
+        List<Interview> recruiterInterviews = interviewRepository
+                .findByRecruiterEmailAndStatusOrderByScheduledAtAsc(
+                        recruiter.getEmail(),
+                        InterviewStatus.SCHEDULED,
+                        PageRequest.of(0, 1000)
+                )
+                .getContent();
+
+        List<Interview> candidateInterviews = interviewRepository
+                .findByCandidateEmailAndStatusOrderByScheduledAtAsc(
+                        candidate.getEmail(),
+                        InterviewStatus.SCHEDULED,
+                        PageRequest.of(0, 1000)
+                )
+                .getContent();
 
         for (Interview interview : recruiterInterviews) {
             LocalDateTime existingStart = interview.getScheduledAt();
@@ -153,6 +197,24 @@ public class InterviewService {
                 throw new ScheduleConflictException("Candidate already has an interview in this time slot");
             }
         }
+    }
+
+    private List<InterviewResponse> mergeAndMapInterviews(List<Interview> recruiterInterviews, List<Interview> candidateInterviews) {
+        List<Interview> allInterviews = recruiterInterviews.stream().toList();
+
+        List<Interview> merged = new java.util.ArrayList<>(allInterviews);
+
+        for (Interview interview : candidateInterviews) {
+            boolean alreadyAdded = merged.stream().anyMatch(existing -> existing.getId().equals(interview.getId()));
+            if (!alreadyAdded) {
+                merged.add(interview);
+            }
+        }
+
+        return merged.stream()
+                .sorted((a, b) -> a.getScheduledAt().compareTo(b.getScheduledAt()))
+                .map(this::mapToResponse)
+                .toList();
     }
 
     private InterviewResponse mapToResponse(Interview interview) {

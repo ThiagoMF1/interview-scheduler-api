@@ -2,17 +2,26 @@ package com.thiagomf.interviewschedulerapi.repository;
 
 import com.thiagomf.interviewschedulerapi.entity.Interview;
 import com.thiagomf.interviewschedulerapi.entity.InterviewStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-
-import java.util.List;
 
 public interface InterviewRepository extends JpaRepository<Interview, Long> {
 
-    List<Interview> findByRecruiterIdAndStatus(Long recruiterId, InterviewStatus status);
+    Page<Interview> findByRecruiterEmailOrderByScheduledAtAsc(String recruiterEmail, Pageable pageable);
 
-    List<Interview> findByCandidateIdAndStatus(Long candidateId, InterviewStatus status);
+    Page<Interview> findByCandidateEmailOrderByScheduledAtAsc(String candidateEmail, Pageable pageable);
 
-    List<Interview> findByRecruiterEmailOrderByScheduledAtAsc(String recruiterEmail);
+    Page<Interview> findByRecruiterEmailAndStatusOrderByScheduledAtAsc(String recruiterEmail, InterviewStatus status, Pageable pageable);
 
-    List<Interview> findByCandidateEmailOrderByScheduledAtAsc(String candidateEmail);
+    Page<Interview> findByCandidateEmailAndStatusOrderByScheduledAtAsc(String candidateEmail, InterviewStatus status, Pageable pageable);
+
+    long countByRecruiterEmailOrCandidateEmail(String recruiterEmail, String candidateEmail);
+
+    long countByRecruiterEmailAndStatusOrCandidateEmailAndStatus(
+            String recruiterEmail,
+            InterviewStatus recruiterStatus,
+            String candidateEmail,
+            InterviewStatus candidateStatus
+    );
 }

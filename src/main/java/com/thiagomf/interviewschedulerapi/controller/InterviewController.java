@@ -3,6 +3,7 @@ package com.thiagomf.interviewschedulerapi.controller;
 import com.thiagomf.interviewschedulerapi.dto.CancelInterviewRequest;
 import com.thiagomf.interviewschedulerapi.dto.CreateInterviewRequest;
 import com.thiagomf.interviewschedulerapi.dto.InterviewResponse;
+import com.thiagomf.interviewschedulerapi.entity.InterviewStatus;
 import com.thiagomf.interviewschedulerapi.service.InterviewService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -25,8 +26,13 @@ public class InterviewController {
     }
 
     @GetMapping("/me")
-    public List<InterviewResponse> getMyInterviews(Authentication authentication) {
-        return interviewService.getMyInterviews(authentication.getName());
+    public List<InterviewResponse> getMyInterviews(
+            Authentication authentication,
+            @RequestParam(required = false) InterviewStatus status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size
+    ) {
+        return interviewService.getMyInterviews(authentication.getName(), status, page, size);
     }
 
     @GetMapping("/{interviewId}")
